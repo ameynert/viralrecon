@@ -63,6 +63,7 @@ def helpMessage() {
       --min_coverage [int]              When performing variant calling skip positions with an overall read depth smaller than this number (Default: 10)
       --max_allele_freq [float]         Maximum allele frequency threshold for filtering variant calls (Default: 0.8)
       --save_align_intermeds [bool]     Save the intermediate BAM files from the alignment steps (Default: false)
+      --save_mapped_reads_only [bool]   Save only the mapped reads from the bowtie alignment step (Default: false)
       --save_mpileup [bool]             Save MPileup files generated during variant calling (Default: false)
       --skip_markduplicates [bool]      Skip picard MarkDuplicates step (Default: false)
       --skip_snpeff [bool]              Skip SnpEff and SnpSift annotation of variants (Default: false)
@@ -254,6 +255,7 @@ if (!params.skip_variants) {
     summary['Min Read Depth']        = params.min_coverage
     summary['Max Allele Freq']       = params.max_allele_freq
     if (params.save_align_intermeds) summary['Save Align Intermeds'] =  'Yes'
+    if (params.save_mapped_reads_only) summary['Save Mapped Reads Only'] = 'Yes'
     if (params.save_mpileup)         summary['Save MPileup'] = 'Yes'
     if (params.skip_markduplicates)  summary['Skip MarkDuplicates'] = 'Yes'
     if (params.skip_snpeff)          summary['Skip SnpEff'] = 'Yes'
@@ -992,7 +994,14 @@ if (params.skip_markduplicates) {
                           else if (filename.endsWith(".idxstats")) "samtools_stats/$filename"
                           else if (filename.endsWith(".stats")) "samtools_stats/$filename"
                           else if (filename.endsWith(".metrics.txt")) "picard_metrics/$filename"
-                          else filename
+                          else {
+                              if (params.save_mapped_reads_only) {
+			          if (filename.indexOf("mapped") > 0) filename
+                              }
+                              else {
+                                  filename
+                              }
+                          }
                     }
 
         when:
@@ -1010,6 +1019,7 @@ if (params.skip_markduplicates) {
                                                                                 ch_markdup_bam_bcftools_consensus
         path "*.{flagstat,idxstats,stats}" into ch_markdup_bam_flagstat_mqc
         path "*.txt" into ch_markdup_bam_metrics_mqc
+        path("*.sorted.mapped.{bam,bam.bai}") into ch_markdup_mapped_only_bam
 
         script:
         def avail_mem = 3
@@ -1033,6 +1043,15 @@ if (params.skip_markduplicates) {
         samtools idxstats ${prefix}.sorted.bam > ${prefix}.sorted.bam.idxstats
         samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.bam.flagstat
         samtools stats ${prefix}.sorted.bam > ${prefix}.sorted.bam.stats
+
+	if [ ${params.save_mapped_reads_only} == "true" ]
+        then
+	    samtools view -F4 -hb ${prefix}.sorted.bam > ${prefix}.sorted.mapped.bam
+            samtools index ${prefix}.sorted.mapped.bam
+            samtools idxstats ${prefix}.sorted.bam > ${prefix}.sorted.mapped.bam.idxstats
+            samtools flagstat ${prefix}.sorted.bam > ${prefix}.sorted.mapped.bam.flagstat
+            samtools stats ${prefix}.sorted.bam > ${prefix}.sorted.mapped.bam.stats
+        fi
         """
     }
 }
